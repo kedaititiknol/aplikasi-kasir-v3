@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "short_name": "Kasir Titik Nol",
+  "name": "KEDAI TITIK NOL - POS System",
+  "description": "Aplikasi Kasir Point of Sale (POS) Kedai Titik Nol",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1c1917",
+  "theme_color": "#b45309",
+  "categories": ["business", "finance"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ]
+}
