@@ -41,7 +41,7 @@ const formatDate = (isoString) => {
 
 const saveSettingsToSheet = async (settingsData) => {
   try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKZ6hPXRPFbXARKGtKtiTBjnqVdqzs2b7a7qW3E-eD_9-Z9S94e76WqrM8MrO1Wven/exec"; 
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwtUnYegbKBUKRR6YcGGjHvec861qs_7nnx3Jbdf4OxbLgGyujI3UeIUN8cT9aJawfz/exec"; 
     
     const payload = {
       action: 'saveSettings',
@@ -64,7 +64,7 @@ const saveSettingsToSheet = async (settingsData) => {
 
 const saveShiftToSheets = async (actionType, shiftData) => {
   try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKZ6hPXRPFbXARKGtKtiTBjnqVdqzs2b7a7qW3E-eD_9-Z9S94e76WqrM8MrO1Wven/exec"; 
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwtUnYegbKBUKRR6YcGGjHvec861qs_7nnx3Jbdf4OxbLgGyujI3UeIUN8cT9aJawfz/exec"; 
     
     const payload = {
       action: actionType,
@@ -313,57 +313,60 @@ export default function App() {
       return;
     }
 
-    // Kosongkan antrean sementara untuk mencegah pembacaan paralel
-    localStorage.setItem('tn_offline_queue', JSON.stringify([]));
+    // Ambil item pertama dari antrean untuk diproses secara sekuensial
+    const item = queue[0];
+    const remainingQueue = queue.slice(1);
 
-    const remainingQueue = [];
+    // Simpan sisa antrean terlebih dahulu untuk mencegah eksekusi paralel ganda
+    localStorage.setItem('tn_offline_queue', JSON.stringify(remainingQueue));
 
-    for (const item of queue) {
-      try {
-        if (item.action === 'sendTransaction') {
-          // Cek apakah transaksi dengan ID ini sudah ada di state transactions online/lokal utama
-          const exists = transactions.some(t => t.id === item.payload.id);
-          if (!exists) {
-            await sendTransaction(item.payload);
-          }
-        } else if (item.action === 'saveExpense') {
-          const exists = expenses.some(e => e.id === item.payload.id);
-          if (!exists) {
-            await saveExpenseToSheet(item.payload);
-          }
-        } else if (item.action === 'saveProduct' || item.action === 'editProduct') {
-          await saveProductToSheet(item.payload);
-        } else if (item.action === 'openShift' || item.action === 'closeShift') {
-          const shiftId = item.payload.id_shift || item.payload.idShift;
-          const exists = shiftHistory.some(s => (s.idShift || s.id_shift) === shiftId);
-          // Kirim hanya jika belum ada di riwayat shift server/lokal yang sudah tertutup
-          if (!exists || item.action === 'openShift') {
-            await saveShiftToSheets(item.action, item.payload);
-          }
-        } else if (item.action === 'saveSettings') {
-          await saveSettingsToSheet(item.payload);
+    try {
+      if (item.action === 'sendTransaction') {
+        const exists = transactions.some(t => t.id === item.payload.id);
+        if (!exists) {
+          await sendTransaction(item.payload);
         }
-      } catch (error) {
-        console.error("Gagal mengirim antrean offline:", error);
-        remainingQueue.push(item);
+      } else if (item.action === 'saveExpense') {
+        const exists = expenses.some(e => e.id === item.payload.id);
+        if (!exists) {
+          await saveExpenseToSheet(item.payload);
+        }
+      } else if (item.action === 'saveProduct' || item.action === 'editProduct') {
+        await saveProductToSheet(item.payload);
+      } else if (item.action === 'openShift' || item.action === 'closeShift') {
+        const shiftId = item.payload.id_shift || item.payload.idShift;
+        const exists = shiftHistory.some(s => (s.idShift || s.id_shift) === shiftId);
+        if (!exists || item.action === 'openShift') {
+          await saveShiftToSheets(item.action, item.payload);
+        }
+      } else if (item.action === 'saveSettings') {
+        await saveSettingsToSheet(item.payload);
       }
-    }
 
-    if (remainingQueue.length > 0) {
+      // Jika masih ada sisa antrean, lanjutkan pemrosesan secara berurutan dengan jeda singkat
+      if (remainingQueue.length > 0) {
+        setTimeout(() => {
+          isProcessingQueueRef.current = false;
+          processOfflineQueue();
+        }, 300);
+      } else {
+        showToast('Antrean data berhasil disinkronkan tanpa duplikasi!', 'success');
+        loadSheetData(false);
+        fetchShiftFromSheets();
+        isProcessingQueueRef.current = false;
+      }
+    } catch (error) {
+      console.error("Gagal mengirim antrean offline:", error);
+      // Kembalikan item yang gagal ke antrean teratas
       const currentQueue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
-      localStorage.setItem('tn_offline_queue', JSON.stringify([...remainingQueue, ...currentQueue]));
-    } else {
-      showToast('Antrean data berhasil disinkronkan tanpa duplikasi!', 'success');
-      loadSheetData(false);
-      fetchShiftFromSheets();
+      localStorage.setItem('tn_offline_queue', JSON.stringify([item, ...currentQueue]));
+      isProcessingQueueRef.current = false;
     }
-
-    isProcessingQueueRef.current = false;
   }, [transactions, expenses, shiftHistory, showToast, loadSheetData, fetchShiftFromSheets]);
 
   const fetchShiftFromSheets = useCallback(async () => {
     try {
-      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKZ6hPXRPFbXARKGtKtiTBjnqVdqzs2b7a7qW3E-eD_9-Z9S94e76WqrM8MrO1Wven/exec"; 
+      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwtUnYegbKBUKRR6YcGGjHvec861qs_7nnx3Jbdf4OxbLgGyujI3UeIUN8cT9aJawfz/exec"; 
       const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getShiftData`);
       const result = await response.json();
       
