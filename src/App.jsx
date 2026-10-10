@@ -107,7 +107,8 @@ const Icon = ({ name, className = "w-5 h-5" }) => {
     barcode: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />,
     download: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />,
     bluetooth: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l5-5m0 0l5 5m-5-5v12m0-12l4-4m-4 4L7 4" />,
-    cashDrawer: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+    cashDrawer: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />,
+    reset: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
   };
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -226,6 +227,21 @@ export default function App() {
   const [expenseFormOpen, setExpenseFormOpen] = useState(false);
   const [expenseFormData, setExpenseFormData] = useState({ description: '', amount: '' });
 
+  // --- FUNGSI RESET CACHE LOKAL KHUSUS ADMIN ---
+  const handleLocalReset = () => {
+    if (window.confirm('Yakin ingin membersihkan seluruh cache lokal dan menyelaraskan ulang dengan Google Sheets?')) {
+      localStorage.removeItem('tn_transactions');
+      localStorage.removeItem('tn_shift_history');
+      localStorage.removeItem('tn_expenses');
+      localStorage.removeItem('tn_products');
+      localStorage.removeItem('tn_data_version');
+      showToast('Cache lokal berhasil dibersihkan. Memuat ulang data...', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    }
+  };
+
   function handleLogin(e) {
     e.preventDefault();
     const inputUsername = loginForm.username.trim().toLowerCase();
@@ -318,7 +334,6 @@ export default function App() {
     }
   }, []);
 
-  // --- MODIFIKASI LOAD SHEET DATA DENGAN VERSION CHECKING OTOMATIS ---
   const loadSheetData = useCallback(async (showLoadingState = false) => {
     if (isSyncingRef.current && !showLoadingState) return;
     isSyncingRef.current = true;
@@ -327,7 +342,6 @@ export default function App() {
     try {
       const data = await fetchAllData();
       if (data) {
-        // Mekanisme Pengecekan Versi (Version Checking) atau Timestamp Validasi
         const serverVersion = String(data.version || data.dataVersion || '1.0');
         const localVersion = localStorage.getItem('tn_data_version');
 
@@ -338,7 +352,6 @@ export default function App() {
           localStorage.removeItem('tn_expenses');
           localStorage.setItem('tn_data_version', serverVersion);
           
-          // Reset state lokal agar langsung sinkron dengan server
           setTransactions([]);
           setShiftHistory([]);
           setExpenses([]);
@@ -448,7 +461,6 @@ export default function App() {
       setLoading(false);
     }
   }, [products]);
-  // -----------------------------------------------------------------
 
   useEffect(() => {
     fetchShiftFromSheets();
@@ -1081,6 +1093,19 @@ export default function App() {
                   <p className="text-xs text-amber-400 capitalize">{currentUser.role}</p>
                 </div>
               </div>
+
+              {currentUser.role === 'admin' && (
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleLocalReset();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-950/60 hover:bg-amber-900 text-amber-300 rounded-xl text-xs font-semibold transition duration-200 border border-amber-900/50"
+                >
+                  <Icon name="reset" className="w-4 h-4" /> Reset Cache Lokal
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
@@ -1139,13 +1164,15 @@ export default function App() {
             </div>
           </div>  
 
-          <button 
-            onClick={() => setActiveTab('settings')}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-stone-300 hover:bg-stone-800 hover:text-white transition-colors"
-          >
-            <span className="text-lg">⚙️</span>
-            <span className="font-medium">Pengaturan</span>
-          </button>
+          {currentUser.role === 'admin' && (
+            <button
+              onClick={handleLocalReset}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-amber-950/60 hover:bg-amber-900 text-amber-300 rounded-xl text-xs font-semibold transition duration-200 border border-amber-900/50"
+              title="Bersihkan Cache Lokal & Muat Ulang"
+            >
+              <Icon name="reset" className="w-4 h-4" /> Reset Cache Lokal
+            </button>
+          )}
 
           <button
             onClick={handleLogout}
