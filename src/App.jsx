@@ -39,10 +39,9 @@ const formatDate = (isoString) => {
   return isNaN(date.getTime()) ? String(isoString) : date.toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-// Tambahkan helper ini di bagian atas bersama helper API lainnya
 const saveSettingsToSheet = async (settingsData) => {
   try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWbNLThnN0xe0HpYzN6Xa6BA7YYz4zw_ushl0zJnpuI2IVyU9Iej72e3RrmGOvZdoH/exec"; 
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbychXnOBXEZrdUaAYLcR1DDb22mbYqYjFEPedxGdVt4Fa07OXDowczgZ8m1G_k4cIHr/exec"; 
     
     const payload = {
       action: 'saveSettings',
@@ -63,18 +62,15 @@ const saveSettingsToSheet = async (settingsData) => {
   }
 };
 
-// Fungsi helper untuk mengirim data shift (Buka / Tutup Shift) ke Google Sheets
 const saveShiftToSheets = async (actionType, shiftData) => {
   try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWbNLThnN0xe0HpYzN6Xa6BA7YYz4zw_ushl0zJnpuI2IVyU9Iej72e3RrmGOvZdoH/exec"; 
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbychXnOBXEZrdUaAYLcR1DDb22mbYqYjFEPedxGdVt4Fa07OXDowczgZ8m1G_k4cIHr/exec"; 
     
     const payload = {
       action: actionType,
       ...shiftData
     };
     
-    console.log("Mengirim data ke Apps Script:", payload);
-
     const response = await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -82,32 +78,10 @@ const saveShiftToSheets = async (actionType, shiftData) => {
     });
     
     const result = await response.json();
-    console.log("Respons dari Google Sheets:", result);
+    return result;
   } catch (error) {
-    console.error("Gagal sinkronisasi:", error);
+    console.error("Gagal sinkronisasi shift:", error);
     throw error;
-  }
-};
-
-const handleBluetoothPrint = async (dataCetak) => {
-  try {
-    console.log("Mencetak via Bluetooth:", dataCetak);
-    
-    if (!navigator.bluetooth) {
-      alert("Browser Anda tidak mendukung Web Bluetooth.");
-      return;
-    }
-
-    const device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: []
-    });
-    
-    await device.gatt.connect();
-    
-  } catch (error) {
-    console.error("Gagal mencetak via bluetooth:", error);
-    alert("Gagal mencetak: " + error.message);
   }
 };
 
@@ -143,7 +117,6 @@ const Icon = ({ name, className = "w-5 h-5" }) => {
 };
 
 export default function App() {
-  // --- DEKLARASI STATE ---
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const isSyncingRef = useRef(false);
@@ -207,7 +180,6 @@ export default function App() {
     }
   });
   
-  // Shift & Cash Drawer State Management
   const [currentShift, setCurrentShift] = useState(() => {
     try {
       const saved = localStorage.getItem('tn_current_shift');
@@ -254,9 +226,6 @@ export default function App() {
   const [expenseFormOpen, setExpenseFormOpen] = useState(false);
   const [expenseFormData, setExpenseFormData] = useState({ description: '', amount: '' });
 
-  const [bluetoothDevice, setBluetoothDevice] = useState(null);
-  // --- AKHIR DEKLARASI STATE ---
-
   function handleLogin(e) {
     e.preventDefault();
     const inputUsername = loginForm.username.trim().toLowerCase();
@@ -289,67 +258,67 @@ export default function App() {
   };
 
   const processOfflineQueue = useCallback(async () => {
-  if (!navigator.onLine) return;
+    if (!navigator.onLine) return;
 
-  const queue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
-  if (queue.length === 0) return;
+    const queue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
+    if (queue.length === 0) return;
 
-  console.log(`Memproses ${queue.length} antrean offline...`);
-  const remainingQueue = [];
+    const remainingQueue = [];
 
-  for (const item of queue) {
-    try {
-      if (item.action === 'sendTransaction') {
-        await sendTransaction(item.payload);
-      } else if (item.action === 'saveExpense') {
-        await saveExpenseToSheet(item.payload);
-      } else if (item.action === 'saveProduct' || item.action === 'editProduct') {
-        await saveProductToSheet(item.payload);
-      } else if (item.action === 'openShift' || item.action === 'closeShift') {
-        await saveShiftToSheets(item.action, item.payload);
-      } else if (item.action === 'saveSettings') {
-        await saveSettingsToSheet(item.payload);
+    for (const item of queue) {
+      try {
+        if (item.action === 'sendTransaction') {
+          await sendTransaction(item.payload);
+        } else if (item.action === 'saveExpense') {
+          await saveExpenseToSheet(item.payload);
+        } else if (item.action === 'saveProduct' || item.action === 'editProduct') {
+          await saveProductToSheet(item.payload);
+        } else if (item.action === 'openShift' || item.action === 'closeShift') {
+          await saveShiftToSheets(item.action, item.payload);
+        } else if (item.action === 'saveSettings') {
+          await saveSettingsToSheet(item.payload);
+        }
+      } catch (error) {
+        console.error("Gagal mengirim antrean offline:", error);
+        remainingQueue.push(item);
       }
-    } catch (error) {
-      console.error("Gagal mengirim antrean offline:", error);
-      remainingQueue.push(item);
     }
-  }
 
-  localStorage.setItem('tn_offline_queue', JSON.stringify(remainingQueue));
-  if (remainingQueue.length < queue.length) {
-    showToast('Antrean data & pengaturan berhasil disinkronkan ke Google Sheets!', 'success');
-  }
-}, [showToast]);
+    localStorage.setItem('tn_offline_queue', JSON.stringify(remainingQueue));
+    if (remainingQueue.length < queue.length) {
+      showToast('Antrean data & pengaturan berhasil disinkronkan ke Google Sheets!', 'success');
+    }
+  }, [showToast]);
 
   const fetchShiftFromSheets = useCallback(async () => {
-  try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWbNLThnN0xe0HpYzN6Xa6BA7YYz4zw_ushl0zJnpuI2IVyU9Iej72e3RrmGOvZdoH/exec"; 
-    const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getShiftData`);
-    const result = await response.json();
-    
-    if (result && result.status === 'success' && Array.isArray(result.data)) {
-      const mappedHistory = result.data.map(s => ({
-        idShift: s.idShift || s.id_shift,
-        kasir: s.kasir || s.nama_kasir,
-        waktuBuka: s.waktuBuka || s.waktu_buka,
-        waktuTutup: s.waktuTutup || s.waktu_tutup,
-        modalAwal: Number(s.modalAwal || s.modal_awal || 0),
-        totalTunai: Number(s.totalTunai || s.total_tunai || 0),
-        totalNonTunai: Number(s.totalNonTunai || s.total_nontunai || 0),
-        uangAktual: Number(s.uangAktual || s.uang_aktual || 0),
-        selisih: Number(s.selisih || s.variance || 0),
-        status: s.status || 'CLOSED'
-      })).sort((a, b) => new Date(b.waktuTutup || 0) - new Date(a.waktuTutup || 0));
+    try {
+      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbychXnOBXEZrdUaAYLcR1DDb22mbYqYjFEPedxGdVt4Fa07OXDowczgZ8m1G_k4cIHr/exec"; 
+      const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getShiftData`);
+      const result = await response.json();
+      
+      if (result && result.status === 'success' && Array.isArray(result.data)) {
+        const mappedHistory = result.data.map(s => ({
+          idShift: s.idShift || s.id_shift,
+          kasir: s.kasir || s.nama_kasir,
+          waktuBuka: s.waktuBuka || s.waktu_buka,
+          waktuTutup: s.waktuTutup || s.waktu_tutup,
+          modalAwal: Number(s.modalAwal || s.modal_awal || 0),
+          totalTunai: Number(s.totalTunai || s.total_tunai || 0),
+          totalNonTunai: Number(s.totalNonTunai || s.total_nontunai || 0),
+          uangAktual: Number(s.uangAktual || s.uang_aktual || 0),
+          selisih: Number(s.selisih || s.variance || 0),
+          status: s.status || 'CLOSED'
+        })).sort((a, b) => new Date(b.waktuTutup || 0) - new Date(a.waktuTutup || 0));
 
-      setShiftHistory(mappedHistory);
-      localStorage.setItem('tn_shift_history', JSON.stringify(mappedHistory));
+        setShiftHistory(mappedHistory);
+        localStorage.setItem('tn_shift_history', JSON.stringify(mappedHistory));
+      }
+    } catch (error) {
+      console.error("Gagal menarik data shift dari Google Sheets:", error);
     }
-  } catch (error) {
-    console.error("Gagal menarik data shift dari Google Sheets:", error);
-  }
-}, []);
+  }, []);
 
+  // --- MODIFIKASI LOAD SHEET DATA DENGAN VERSION CHECKING OTOMATIS ---
   const loadSheetData = useCallback(async (showLoadingState = false) => {
     if (isSyncingRef.current && !showLoadingState) return;
     isSyncingRef.current = true;
@@ -358,6 +327,23 @@ export default function App() {
     try {
       const data = await fetchAllData();
       if (data) {
+        // Mekanisme Pengecekan Versi (Version Checking) atau Timestamp Validasi
+        const serverVersion = String(data.version || data.dataVersion || '1.0');
+        const localVersion = localStorage.getItem('tn_data_version');
+
+        if (localVersion !== serverVersion) {
+          console.log("Versi data atau struktur server berubah. Membersihkan cache lokal lama...");
+          localStorage.removeItem('tn_transactions');
+          localStorage.removeItem('tn_shift_history');
+          localStorage.removeItem('tn_expenses');
+          localStorage.setItem('tn_data_version', serverVersion);
+          
+          // Reset state lokal agar langsung sinkron dengan server
+          setTransactions([]);
+          setShiftHistory([]);
+          setExpenses([]);
+        }
+
         if (Array.isArray(data.produk)) {
           const mappedProducts = data.produk.map((p, idx) => ({
             id: p?.id ? String(p.id) : `PROD-${idx + 1}`,
@@ -383,7 +369,6 @@ export default function App() {
           localStorage.setItem('tn_users', JSON.stringify(mappedUsers));
         }
 
-        // --- PENEMPATAN SCRIPT PENGATURAN (SETTINGS) ---
         if (data.settings) {
           const fetchedSettings = {
             storeName: data.settings.storeName || data.settings.namaToko || defaultSettings.storeName,
@@ -394,9 +379,7 @@ export default function App() {
           setSettings(fetchedSettings);
           localStorage.setItem('pos_settings', JSON.stringify(fetchedSettings));
         }
-        // ------------------------------------------------
 
-        // Ambil antrean offline untuk menggabungkan data lokal yang belum sempat terkirim
         const offlineQueue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
         const pendingExpenses = offlineQueue
           .filter(q => q.action === 'saveExpense')
@@ -411,7 +394,6 @@ export default function App() {
             amount: Number(e?.nominal ?? e?.amount ?? 0)
           }));
 
-          // Server menjadi acuan utama (source of truth); gabungkan hanya dengan pengeluaran offline yang belum sync
           const mergedExpenses = [...pendingExpenses, ...mappedExpenses].sort((a, b) => new Date(b.date) - new Date(a.date));
           setExpenses(mergedExpenses);
           localStorage.setItem('tn_expenses', JSON.stringify(mergedExpenses));
@@ -453,7 +435,6 @@ export default function App() {
             };
           });
 
-          // Server menjadi acuan utama; gabungkan hanya dengan transaksi offline yang belum sync
           const mergedTransactions = [...pendingTransactions, ...mappedTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
           setTransactions(mergedTransactions);
           localStorage.setItem('tn_transactions', JSON.stringify(mergedTransactions));
@@ -467,6 +448,7 @@ export default function App() {
       setLoading(false);
     }
   }, [products]);
+  // -----------------------------------------------------------------
 
   useEffect(() => {
     fetchShiftFromSheets();
@@ -1973,27 +1955,27 @@ export default function App() {
         )}
         
         {activeTab === 'settings' && (
-  <Pengaturan 
-    settings={settings} 
-    onSaveSettings={async (newSettings) => {
-      setSettings(newSettings);
-      localStorage.setItem('pos_settings', JSON.stringify(newSettings));
+          <Pengaturan 
+            settings={settings} 
+            onSaveSettings={async (newSettings) => {
+              setSettings(newSettings);
+              localStorage.setItem('pos_settings', JSON.stringify(newSettings));
 
-      try {
-        if (navigator.onLine) {
-          await saveSettingsToSheet(newSettings);
-          showToast('Pengaturan toko berhasil diperbarui & disinkronkan!', 'success');
-        } else {
-          queueOfflineAction('saveSettings', newSettings);
-          showToast('Offline: Pengaturan disimpan lokal & akan disinkronkan saat online.', 'info');
-        }
-      } catch (err) {
-        queueOfflineAction('saveSettings', newSettings);
-        showToast('Koneksi terganggu, pengaturan masuk antrean sinkronisasi.', 'info');
-      }
-    }} 
-  />
-)}
+              try {
+                if (navigator.onLine) {
+                  await saveSettingsToSheet(newSettings);
+                  showToast('Pengaturan toko berhasil diperbarui & disinkronkan!', 'success');
+                } else {
+                  queueOfflineAction('saveSettings', newSettings);
+                  showToast('Offline: Pengaturan disimpan lokal & akan disinkronkan saat online.', 'info');
+                }
+              } catch (err) {
+                queueOfflineAction('saveSettings', newSettings);
+                showToast('Koneksi terganggu, pengaturan masuk antrean sinkronisasi.', 'info');
+              }
+            }} 
+          />
+        )}
 
       </main>
 
@@ -2164,7 +2146,7 @@ export default function App() {
                 Tutup
               </button>
               <button
-                onClick={handleBluetoothPrint}
+                onClick={() => {}}
                 className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow"
               >
                 <Icon name="bluetooth" className="w-4 h-4" /> Cetak Struk

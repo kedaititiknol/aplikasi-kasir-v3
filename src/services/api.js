@@ -1,4 +1,4 @@
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxWbNLThnN0xe0HpYzN6Xa6BA7YYz4zw_ushl0zJnpuI2IVyU9Iej72e3RrmGOvZdoH/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbychXnOBXEZrdUaAYLcR1DDb22mbYqYjFEPedxGdVt4Fa07OXDowczgZ8m1G_k4cIHr/exec';
 
 // =================================================================
 // 1. DATA MASTER (PRODUK, EXPENSE, TRANSAKSI)
