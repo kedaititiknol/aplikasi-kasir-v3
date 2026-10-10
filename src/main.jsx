@@ -11,12 +11,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>,
 )
 
-// PERBAIKAN SERVICE WORKER:
-// Hanya aktifkan Service Worker jika aplikasi dijalankan dalam mode PRODUCTION
+// --- PERBAIKAN DI src/main.jsx ---
 if ('serviceWorker' in navigator) {
   if (import.meta.env.PROD) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
+      // Sesuaikan path dengan base path GitHub Pages
+      navigator.serviceWorker.register('/aplikasi-kasir-v3/sw.js')
         .then((reg) => console.log('PWA Service Worker Terdaftar:', reg.scope))
         .catch((err) => console.error('PWA Service Worker Gagal:', err));
     });

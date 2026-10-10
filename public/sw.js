@@ -2,10 +2,10 @@
 
 const CACHE_NAME = 'titik-nol-pos-v3'; // Naikkan versi cache
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png' // Disesuaikan dengan ikon yang ada di index.html
+  '/aplikasi-kasir-v3/',
+  '/aplikasi-kasir-v3/index.html',
+  '/aplikasi-kasir-v3/manifest.json',
+  '/aplikasi-kasir-v3/icon-192.png' // Disesuaikan dengan base path GitHub Pages
 ];
 
 // Install Event
@@ -74,7 +74,7 @@ self.addEventListener('fetch', (event) => {
         .catch(() => {
           // 3. Fallback jika offline dan request berupa navigasi halaman
           if (event.request.mode === 'navigate') {
-            return caches.match('/index.html');
+            return caches.match('/aplikasi-kasir-v3/index.html');
           }
         });
     })
