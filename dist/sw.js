@@ -38,12 +38,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Jangan cegat request non-GET atau request pengembangan Vite / Google Apps Script
+  // Bebaskan semua request ke Google Apps Script & non-GET dari SW Interception
   if (
     event.request.method !== 'GET' ||
+    url.hostname.includes('script.google.com') ||
+    url.hostname.includes('script.googleusercontent.com') ||
     url.pathname.startsWith('/@') ||
-    url.pathname.includes('node_modules') ||
-    url.hostname.includes('script.google.com')
+    url.pathname.includes('node_modules')
   ) {
     return;
   }

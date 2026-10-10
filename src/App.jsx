@@ -39,10 +39,34 @@ const formatDate = (isoString) => {
   return isNaN(date.getTime()) ? String(isoString) : date.toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
+// Tambahkan helper ini di bagian atas bersama helper API lainnya
+const saveSettingsToSheet = async (settingsData) => {
+  try {
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWbNLThnN0xe0HpYzN6Xa6BA7YYz4zw_ushl0zJnpuI2IVyU9Iej72e3RrmGOvZdoH/exec"; 
+    
+    const payload = {
+      action: 'saveSettings',
+      ...settingsData
+    };
+    
+    const response = await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+    
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error("Gagal sinkronisasi pengaturan:", error);
+    throw error;
+  }
+};
+
 // Fungsi helper untuk mengirim data shift (Buka / Tutup Shift) ke Google Sheets
 const saveShiftToSheets = async (actionType, shiftData) => {
   try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwohXM9jPG_tuS2kYmI2fAqpX-8SkKpDPsixWjkHOTG_o1HEDlxyKW7lu7bQHQ_QSap/exec"; 
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWbNLThnN0xe0HpYzN6Xa6BA7YYz4zw_ushl0zJnpuI2IVyU9Iej72e3RrmGOvZdoH/exec"; 
     
     const payload = {
       action: actionType,
@@ -265,70 +289,66 @@ export default function App() {
   };
 
   const processOfflineQueue = useCallback(async () => {
-    if (!navigator.onLine) return;
+  if (!navigator.onLine) return;
 
-    const queue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
-    if (queue.length === 0) return;
+  const queue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
+  if (queue.length === 0) return;
 
-    console.log(`Memproses ${queue.length} antrean offline...`);
-    const remainingQueue = [];
+  console.log(`Memproses ${queue.length} antrean offline...`);
+  const remainingQueue = [];
 
-    for (const item of queue) {
-      try {
-        if (item.action === 'sendTransaction') {
-          await sendTransaction(item.payload);
-        } else if (item.action === 'saveExpense') {
-          await saveExpenseToSheet(item.payload);
-        } else if (item.action === 'saveProduct') {
-          await saveProductToSheet(item.payload);
-        } else if (item.action === 'openShift' || item.action === 'closeShift') {
-          await saveShiftToSheets(item.action, item.payload);
-        }
-      } catch (error) {
-        console.error("Gagal mengirim antrean offline:", error);
-        remainingQueue.push(item);
-      }
-    }
-
-    localStorage.setItem('tn_offline_queue', JSON.stringify(remainingQueue));
-    if (remainingQueue.length < queue.length) {
-      showToast('Antrean data offline berhasil disinkronkan ke Google Sheets!', 'success');
-    }
-  }, [showToast]);
-
-  const fetchShiftFromSheets = useCallback(async () => {
+  for (const item of queue) {
     try {
-      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwohXM9jPG_tuS2kYmI2fAqpX-8SkKpDPsixWjkHOTG_o1HEDlxyKW7lu7bQHQ_QSap/exec"; 
-      const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getShiftData`);
-      const result = await response.json();
-      
-      if (result && result.status === 'success' && Array.isArray(result.data)) {
-        setShiftHistory(prevLocalHistory => {
-          const combinedMap = new Map();
-          
-          result.data.forEach(s => combinedMap.set(s.id_shift || s.idShift, s));
-          
-          prevLocalHistory.forEach(s => {
-            const key = s.id_shift || s.idShift;
-            if (!combinedMap.has(key)) {
-              combinedMap.set(key, s);
-            }
-          });
-
-          const mergedHistory = Array.from(combinedMap.values()).sort((a, b) => {
-            const timeA = new Date(b.waktu_tutup || b.waktu_buka || b.endTime || b.startTime).getTime();
-            const timeB = new Date(a.waktu_tutup || a.waktu_buka || a.endTime || a.startTime).getTime();
-            return timeA - timeB;
-          });
-
-          localStorage.setItem('tn_shift_history', JSON.stringify(mergedHistory));
-          return mergedHistory;
-        });
+      if (item.action === 'sendTransaction') {
+        await sendTransaction(item.payload);
+      } else if (item.action === 'saveExpense') {
+        await saveExpenseToSheet(item.payload);
+      } else if (item.action === 'saveProduct' || item.action === 'editProduct') {
+        await saveProductToSheet(item.payload);
+      } else if (item.action === 'openShift' || item.action === 'closeShift') {
+        await saveShiftToSheets(item.action, item.payload);
+      } else if (item.action === 'saveSettings') {
+        await saveSettingsToSheet(item.payload);
       }
     } catch (error) {
-      console.error("Gagal menarik data shift dari Google Sheets (menggunakan cache lokal):", error);
+      console.error("Gagal mengirim antrean offline:", error);
+      remainingQueue.push(item);
     }
-  }, []);
+  }
+
+  localStorage.setItem('tn_offline_queue', JSON.stringify(remainingQueue));
+  if (remainingQueue.length < queue.length) {
+    showToast('Antrean data & pengaturan berhasil disinkronkan ke Google Sheets!', 'success');
+  }
+}, [showToast]);
+
+  const fetchShiftFromSheets = useCallback(async () => {
+  try {
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxWbNLThnN0xe0HpYzN6Xa6BA7YYz4zw_ushl0zJnpuI2IVyU9Iej72e3RrmGOvZdoH/exec"; 
+    const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getShiftData`);
+    const result = await response.json();
+    
+    if (result && result.status === 'success' && Array.isArray(result.data)) {
+      const mappedHistory = result.data.map(s => ({
+        idShift: s.idShift || s.id_shift,
+        kasir: s.kasir || s.nama_kasir,
+        waktuBuka: s.waktuBuka || s.waktu_buka,
+        waktuTutup: s.waktuTutup || s.waktu_tutup,
+        modalAwal: Number(s.modalAwal || s.modal_awal || 0),
+        totalTunai: Number(s.totalTunai || s.total_tunai || 0),
+        totalNonTunai: Number(s.totalNonTunai || s.total_nontunai || 0),
+        uangAktual: Number(s.uangAktual || s.uang_aktual || 0),
+        selisih: Number(s.selisih || s.variance || 0),
+        status: s.status || 'CLOSED'
+      })).sort((a, b) => new Date(b.waktuTutup || 0) - new Date(a.waktuTutup || 0));
+
+      setShiftHistory(mappedHistory);
+      localStorage.setItem('tn_shift_history', JSON.stringify(mappedHistory));
+    }
+  } catch (error) {
+    console.error("Gagal menarik data shift dari Google Sheets:", error);
+  }
+}, []);
 
   const loadSheetData = useCallback(async (showLoadingState = false) => {
     if (isSyncingRef.current && !showLoadingState) return;
@@ -363,6 +383,20 @@ export default function App() {
           localStorage.setItem('tn_users', JSON.stringify(mappedUsers));
         }
 
+        // --- PENEMPATAN SCRIPT PENGATURAN (SETTINGS) ---
+        if (data.settings) {
+          // Menyesuaikan dengan berbagai kemungkinan nama kolom dari Google Sheets
+          const fetchedSettings = {
+            storeName: data.settings.storeName || data.settings.namaToko || defaultSettings.storeName,
+            address: data.settings.address || data.settings.alamat || defaultSettings.address,
+            phone: data.settings.phone || data.settings.telepon || defaultSettings.phone,
+            receiptFooter: data.settings.receiptFooter || data.settings.footer || defaultSettings.receiptFooter
+          };
+          setSettings(fetchedSettings);
+          localStorage.setItem('pos_settings', JSON.stringify(fetchedSettings));
+        }
+        // ------------------------------------------------
+
         if (Array.isArray(data.expenses)) {
           const mappedExpenses = data.expenses.map((e, idx) => ({
             id: e?.id ? String(e.id) : `EXP-${idx + 1}`,
@@ -371,33 +405,54 @@ export default function App() {
             description: String(e?.kategori || e?.keterangan || e?.description || 'Pengeluaran'),
             amount: Number(e?.nominal ?? e?.amount ?? 0)
           }));
-          setExpenses(mappedExpenses);
-          localStorage.setItem('tn_expenses', JSON.stringify(mappedExpenses));
+
+          setExpenses(prevLocalExpenses => {
+            const combinedMap = new Map();
+            mappedExpenses.forEach(e => combinedMap.set(e.id, e));
+            prevLocalExpenses.forEach(e => {
+              if (!combinedMap.has(e.id)) {
+                combinedMap.set(e.id, e);
+              }
+            });
+
+            const mergedList = Array.from(combinedMap.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
+            localStorage.setItem('tn_expenses', JSON.stringify(mergedList));
+            return mergedList;
+          });
         }
 
         if (Array.isArray(data.transactions)) {
-          const mappedTransactions = data.transactions.map((t, idx) => {
-            let parsedItems = t?.items;
-            if (typeof parsedItems === 'string') {
-              try { parsedItems = JSON.parse(parsedItems); } catch (e) { parsedItems = []; }
-            }
-            if (Array.isArray(parsedItems)) {
-              parsedItems = parsedItems.map(item => typeof item === 'string' ? JSON.parse(item) : item);
-            } else {
-              parsedItems = [];
-            }
+  const mappedTransactions = data.transactions.map((t, idx) => {
+    let parsedItems = t?.items;
+    if (typeof parsedItems === 'string') {
+      try { parsedItems = JSON.parse(parsedItems); } catch (e) { parsedItems = []; }
+    }
+    if (Array.isArray(parsedItems)) {
+      parsedItems = parsedItems.map(item => {
+        let parsedItem = typeof item === 'string' ? JSON.parse(item) : item;
+        
+        // Jika costPrice dari server kosong/0, ambil dari data produk lokal berdasarkan ID/Nama
+        if (!parsedItem.costPrice || parsedItem.costPrice === 0) {
+          const matchedProd = products.find(p => p.id === parsedItem.productId || p.name === parsedItem.name);
+          parsedItem.costPrice = matchedProd ? matchedProd.costPrice : 0;
+        }
+        return parsedItem;
+      });
+    } else {
+      parsedItems = [];
+    }
 
-            return {
-              id: t?.id_transaksi || t?.id || `TRX-${idx + 1}`,
-              date: t?.tanggal || t?.date || new Date().toISOString(),
-              cashier: t?.kasir || t?.cashier || 'Kasir',
-              paymentMethod: t?.metode_bayar || t?.paymentMethod || 'Tunai',
-              total: Number(t?.total) || 0,
-              payment: Number(t?.bayar || t?.payment || t?.total) || 0,
-              change: Number(t?.kembali || t?.change) || 0,
-              items: parsedItems
-            };
-          });
+    return {
+      id: t?.id_transaksi || t?.id || `TRX-${idx + 1}`,
+      date: t?.tanggal || t?.date || new Date().toISOString(),
+      cashier: t?.kasir || t?.cashier || 'Kasir',
+      paymentMethod: t?.metode_bayar || t?.paymentMethod || 'Tunai',
+      total: Number(t?.total) || 0,
+      payment: Number(t?.bayar || t?.payment || t?.total) || 0,
+      change: Number(t?.kembali || t?.change) || 0,
+      items: parsedItems
+    };
+  });
 
           setTransactions(prevLocalTrx => {
             const combinedMap = new Map();
@@ -642,25 +697,25 @@ export default function App() {
     }
 
     const change = paymentMethod === 'Tunai' ? payNum - cartTotal : 0;
-    const newTrx = {
-      id: `TRX-${Date.now().toString().slice(-6)}`,
-      date: new Date().toISOString(),
-      items: cart.map(i => ({ 
-        productId: i.id, 
-        name: i.name, 
-        qty: i.qty, 
-        price: i.sellPrice, 
-        costPrice: i.costPrice || 0,
-        subtotal: i.sellPrice * i.qty,
-        notes: i.notes || '' 
-      })),
-      total: cartTotal,
-      payment: paymentMethod === 'Tunai' ? payNum : cartTotal,
-      change: change,
-      cashier: currentUser?.name || 'Kasir',
-      paymentMethod,
-      id_shift: currentShift?.id_shift || currentShift?.idShift || ''
-    };
+const newTrx = {
+  id: `TRX-${Date.now().toString().slice(-6)}`,
+  date: new Date().toISOString(),
+  items: cart.map(i => ({ 
+    productId: i.id, 
+    name: i.name, 
+    qty: i.qty, 
+    price: i.sellPrice, 
+    costPrice: i.costPrice || 0, // Pastikan harga modal terbawa
+    subtotal: i.sellPrice * i.qty,
+    notes: i.notes || '' 
+  })),
+  total: cartTotal,
+  payment: paymentMethod === 'Tunai' ? payNum : cartTotal,
+  change: change,
+  cashier: currentUser?.name || 'Kasir',
+  paymentMethod,
+  id_shift: currentShift?.id_shift || currentShift?.idShift || ''
+};
 
     const updatedProducts = products.map(prod => {
       const cartItem = cart.find(c => c.id === prod.id);
@@ -707,39 +762,46 @@ export default function App() {
   };
 
   const handleSaveProduct = async (e) => {
-    e.preventDefault();
-    const newProd = {
-      id: editingProduct ? editingProduct.id : `PROD-${Date.now()}`,
-      name: String(productFormData.name || 'Produk Tanpa Nama'),
-      categoryId: Number(productFormData.categoryId || 1),
-      stock: Number(productFormData.stock || 0),
-      costPrice: Number(productFormData.costPrice || 0),
-      sellPrice: Number(productFormData.sellPrice || 0)
-    };
-
-    setProducts(prev => {
-      const updated = editingProduct 
-        ? prev.map(p => p.id === editingProduct.id ? newProd : p) 
-        : [...prev, newProd];
-      localStorage.setItem('tn_products', JSON.stringify(updated));
-      return updated;
-    });
-
-    try {
-      if (navigator.onLine) {
-        await saveProductToSheet(newProd);
-        showToast('Produk berhasil disimpan & disinkronkan!', 'success');
-      } else {
-        queueOfflineAction('saveProduct', newProd);
-        showToast('Offline: Produk disimpan lokal & akan disinkronkan saat online.', 'info');
-      }
-    } catch (err) {
-      queueOfflineAction('saveProduct', newProd);
-      showToast('Koneksi terganggu, produk masuk antrean sync.', 'info');
-    }
-
-    setProductFormOpen(false);
+  e.preventDefault();
+  const isEdit = !!editingProduct;
+  
+  const productData = {
+    id: isEdit ? editingProduct.id : `PROD-${Date.now()}`,
+    name: String(productFormData.name || 'Produk Tanpa Nama'),
+    categoryId: Number(productFormData.categoryId || 1),
+    stock: Number(productFormData.stock || 0),
+    costPrice: Number(productFormData.costPrice || 0),
+    sellPrice: Number(productFormData.sellPrice || 0),
+    actionType: isEdit ? 'editProduct' : 'saveProduct'
   };
+
+  // 1. Update state dan localStorage lokal terlebih dahulu
+  setProducts(prev => {
+    const updated = isEdit 
+      ? prev.map(p => p.id === productData.id ? productData : p) 
+      : [...prev, productData];
+    localStorage.setItem('tn_products', JSON.stringify(updated));
+    return updated;
+  });
+
+  // 2. Kirim ke Google Sheets atau masukkan ke antrean offline jika offline/gagal
+  try {
+    if (navigator.onLine) {
+      await saveProductToSheet(productData);
+      showToast(isEdit ? 'Produk berhasil diperbarui & disinkronkan!' : 'Produk berhasil disimpan & disinkronkan!', 'success');
+    } else {
+      queueOfflineAction(productData.actionType, productData);
+      showToast('Offline: Perubahan produk disimpan lokal & akan disinkronkan saat online.', 'info');
+    }
+  } catch (err) {
+    queueOfflineAction(productData.actionType, productData);
+    showToast('Koneksi terganggu, perubahan produk masuk antrean sync.', 'info');
+  }
+
+  setProductFormOpen(false);
+  setEditingProduct(null);
+  setProductFormData({ name: '', categoryId: 1, stock: 0, costPrice: 0, sellPrice: 0 });
+};
 
   const handleDeleteProduct = (id) => {
     if (window.confirm('Yakin ingin menghapus produk ini?')) {
@@ -750,43 +812,45 @@ export default function App() {
   };
 
   const handleSaveExpense = async (e) => {
-    e.preventDefault();
-    const currentTime = new Date().toISOString();
-    const expDescription = String(expenseFormData.description || 'Pengeluaran');
-    const expAmount = Number(expenseFormData.amount || 0);
+  e.preventDefault();
+  const currentTime = new Date().toISOString();
+  const expDescription = String(expenseFormData.description || 'Pengeluaran');
+  const expAmount = Number(expenseFormData.amount || 0);
 
-    const newExp = {
-      id: `EXP-${Date.now()}`,
-      date: currentTime,
-      tanggal: currentTime,
-      kategori: expDescription,
-      description: expDescription,
-      amount: expAmount,
-      nominal: expAmount
-    };
-
-    setExpenses(prev => {
-      const updated = [newExp, ...prev];
-      localStorage.setItem('tn_expenses', JSON.stringify(updated));
-      return updated;
-    });
-
-    try {
-      if (navigator.onLine) {
-        await saveExpenseToSheet(newExp);
-        showToast('Pengeluaran berhasil dicatat & disinkronkan!', 'success');
-      } else {
-        queueOfflineAction('saveExpense', newExp);
-        showToast('Offline: Pengeluaran dicatat lokal & akan dikirim saat online.', 'info');
-      }
-    } catch (err) {
-      queueOfflineAction('saveExpense', newExp);
-      showToast('Koneksi terganggu, pengeluaran masuk antrean sinkronisasi.', 'info');
-    }
-
-    setExpenseFormOpen(false);
-    setExpenseFormData({ description: '', amount: '' });
+  const newExp = {
+    id: `EXP-${Date.now()}`,
+    date: currentTime,
+    tanggal: currentTime,
+    kategori: expDescription,
+    description: expDescription,
+    amount: expAmount,
+    nominal: expAmount
   };
+
+  // 1. Simpan ke State & LocalStorage secara lokal
+  setExpenses(prev => {
+    const updated = [newExp, ...prev];
+    localStorage.setItem('tn_expenses', JSON.stringify(updated));
+    return updated;
+  });
+
+  // 2. Kirim ke Google Sheets atau antrekan jika offline
+  try {
+    if (navigator.onLine) {
+      await saveExpenseToSheet(newExp);
+      showToast('Pengeluaran berhasil dicatat & disinkronkan!', 'success');
+    } else {
+      queueOfflineAction('saveExpense', newExp);
+      showToast('Offline: Pengeluaran dicatat lokal & akan dikirim saat online.', 'info');
+    }
+  } catch (err) {
+    queueOfflineAction('saveExpense', newExp);
+    showToast('Koneksi terganggu, pengeluaran masuk antrean sinkronisasi.', 'info');
+  }
+
+  setExpenseFormOpen(false);
+  setExpenseFormData({ description: '', amount: '' });
+};
 
   const exportReportToExcel = () => {
     if (filteredReportTransactions.length === 0) {
@@ -858,25 +922,44 @@ export default function App() {
   const totalExpenses = useMemo(() => expenses.reduce((s, e) => s + (e.amount || 0), 0), [expenses]);
   const netProfit = grossProfit - totalExpenses;
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todayTransactions = useMemo(() => transactions.filter(t => (t.date || '').startsWith(todayStr)), [transactions, todayStr]);
-  const todayRevenue = useMemo(() => todayTransactions.reduce((s, t) => s + (t.total || 0), 0), [todayTransactions]);
+  // Pastikan format tanggal konsisten (YYYY-MM-DD)
+const todayStr = new Date().toISOString().slice(0, 10);
+
+// Memfilter transaksi hari ini berdasarkan tanggal lokal atau string ISO
+const todayTransactions = useMemo(() => {
+  return transactions.filter(t => {
+    if (!t.date) return false;
+    // Mengambil 10 karakter pertama dari string tanggal (YYYY-MM-DD)
+    const trxDate = String(t.date).slice(0, 10);
+    return trxDate === todayStr;
+  });
+}, [transactions, todayStr]);
+
+const todayRevenue = useMemo(() => {
+  return todayTransactions.reduce((s, t) => s + (Number(t.total) || 0), 0);
+}, [todayTransactions]);
   const lowStockProducts = useMemo(() => products.filter(p => p.stock < 10), [products]);
 
-  const chartData = useMemo(() => {
-    const days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
-      const label = d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' });
-      const dayTotal = transactions
-        .filter(t => (t.date || '').startsWith(dateStr))
-        .reduce((sum, t) => sum + (t.total || 0), 0);
-      days.push({ label, total: dayTotal });
-    }
-    return days;
-  }, [transactions]);
+const chartData = useMemo(() => {
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const label = d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' });
+    
+    // Menghitung total transaksi berdasarkan state transactions (mencakup online & offline lokal)
+    const dayTotal = transactions
+      .filter(t => {
+        if (!t.date) return false;
+        return String(t.date).slice(0, 10) === dateStr;
+      })
+      .reduce((sum, t) => sum + (Number(t.total) || 0), 0);
+      
+    days.push({ label, total: dayTotal });
+  }
+  return days;
+}, [transactions]);
 
   const maxChartValue = Math.max(...chartData.map(d => d.total), 100000);
 
@@ -1907,15 +1990,29 @@ export default function App() {
         )}
         
         {activeTab === 'settings' && (
-          <Pengaturan 
-            settings={settings} 
-            onSaveSettings={(newSettings) => {
-              setSettings(newSettings);
-              localStorage.setItem('pos_settings', JSON.stringify(newSettings));
-              showToast('Pengaturan toko berhasil diperbarui!', 'success');
-            }} 
-          />
-        )}
+  <Pengaturan 
+    settings={settings} 
+    onSaveSettings={async (newSettings) => {
+      // 1. Simpan lokal secara instan
+      setSettings(newSettings);
+      localStorage.setItem('pos_settings', JSON.stringify(newSettings));
+
+      // 2. Kirim ke Google Sheets atau masukkan antrean offline
+      try {
+        if (navigator.onLine) {
+          await saveSettingsToSheet(newSettings);
+          showToast('Pengaturan toko berhasil diperbarui & disinkronkan!', 'success');
+        } else {
+          queueOfflineAction('saveSettings', newSettings);
+          showToast('Offline: Pengaturan disimpan lokal & akan disinkronkan saat online.', 'info');
+        }
+      } catch (err) {
+        queueOfflineAction('saveSettings', newSettings);
+        showToast('Koneksi terganggu, pengaturan masuk antrean sinkronisasi.', 'info');
+      }
+    }} 
+  />
+)}
 
       </main>
 
