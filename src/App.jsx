@@ -269,8 +269,17 @@ export default function App() {
 
   const queueOfflineAction = (actionType, payload) => {
     const currentQueue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
-    currentQueue.push({ action: actionType, payload, timestamp: Date.now() });
-    localStorage.setItem('tn_offline_queue', JSON.stringify(currentQueue));
+    
+    // Cek duplikasi khusus untuk transaksi atau shift agar tidak masuk antrean berulang
+    const isDuplicate = currentQueue.some(item => 
+      item.action === actionType && 
+      JSON.stringify(item.payload) === JSON.stringify(payload)
+    );
+
+    if (!isDuplicate) {
+      currentQueue.push({ action: actionType, payload, timestamp: Date.now() });
+      localStorage.setItem('tn_offline_queue', JSON.stringify(currentQueue));
+    }
   };
 
   const processOfflineQueue = useCallback(async () => {
@@ -303,8 +312,11 @@ export default function App() {
     localStorage.setItem('tn_offline_queue', JSON.stringify(remainingQueue));
     if (remainingQueue.length < queue.length) {
       showToast('Antrean data & pengaturan berhasil disinkronkan ke Google Sheets!', 'success');
+      // Tarik data terbaru setelah sinkronisasi selesai agar sinkron dengan server
+      loadSheetData(false);
+      fetchShiftFromSheets();
     }
-  }, [showToast]);
+  }, [showToast, loadSheetData, fetchShiftFromSheets]);
 
   const fetchShiftFromSheets = useCallback(async () => {
     try {
