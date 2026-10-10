@@ -41,7 +41,7 @@ const formatDate = (isoString) => {
 
 const saveSettingsToSheet = async (settingsData) => {
   try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlHJz6aHc_iSfTWslxM4ttpbJtY_CZg1zDNJV_DF9Po9pH105tybvFr3BsUJp3wuai/exec"; 
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKZ6hPXRPFbXARKGtKtiTBjnqVdqzs2b7a7qW3E-eD_9-Z9S94e76WqrM8MrO1Wven/exec"; 
     
     const payload = {
       action: 'saveSettings',
@@ -64,7 +64,7 @@ const saveSettingsToSheet = async (settingsData) => {
 
 const saveShiftToSheets = async (actionType, shiftData) => {
   try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlHJz6aHc_iSfTWslxM4ttpbJtY_CZg1zDNJV_DF9Po9pH105tybvFr3BsUJp3wuai/exec"; 
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKZ6hPXRPFbXARKGtKtiTBjnqVdqzs2b7a7qW3E-eD_9-Z9S94e76WqrM8MrO1Wven/exec"; 
     
     const payload = {
       action: actionType,
@@ -363,7 +363,7 @@ export default function App() {
 
   const fetchShiftFromSheets = useCallback(async () => {
     try {
-      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlHJz6aHc_iSfTWslxM4ttpbJtY_CZg1zDNJV_DF9Po9pH105tybvFr3BsUJp3wuai/exec"; 
+      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwKZ6hPXRPFbXARKGtKtiTBjnqVdqzs2b7a7qW3E-eD_9-Z9S94e76WqrM8MrO1Wven/exec"; 
       const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getShiftData`);
       const result = await response.json();
       
