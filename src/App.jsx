@@ -41,7 +41,7 @@ const formatDate = (isoString) => {
 
 const saveSettingsToSheet = async (settingsData) => {
   try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbychXnOBXEZrdUaAYLcR1DDb22mbYqYjFEPedxGdVt4Fa07OXDowczgZ8m1G_k4cIHr/exec"; 
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlHJz6aHc_iSfTWslxM4ttpbJtY_CZg1zDNJV_DF9Po9pH105tybvFr3BsUJp3wuai/exec"; 
     
     const payload = {
       action: 'saveSettings',
@@ -64,7 +64,7 @@ const saveSettingsToSheet = async (settingsData) => {
 
 const saveShiftToSheets = async (actionType, shiftData) => {
   try {
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbychXnOBXEZrdUaAYLcR1DDb22mbYqYjFEPedxGdVt4Fa07OXDowczgZ8m1G_k4cIHr/exec"; 
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlHJz6aHc_iSfTWslxM4ttpbJtY_CZg1zDNJV_DF9Po9pH105tybvFr3BsUJp3wuai/exec"; 
     
     const payload = {
       action: actionType,
@@ -270,24 +270,35 @@ export default function App() {
   const queueOfflineAction = (actionType, payload) => {
     const currentQueue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
     
-    // Ambil ID unik dari payload (misal id transaksi, id shift, atau id expense)
-    const payloadId = payload?.id || payload?.id_shift || payload?.idShift;
+    // Ambil ID unik universal dari payload (bisa id, id_transaksi, id_shift, dll)
+    const payloadId = payload?.id || payload?.id_transaksi || payload?.id_shift || payload?.idShift;
 
-    // Cek apakah aksi dengan ID yang sama persis sudah ada di antrean
-    const existingIndex = currentQueue.findIndex(item => {
-      const itemId = item.payload?.id || item.payload?.id_shift || item.payload?.idShift;
-      return item.action === actionType && payloadId && itemId === payloadId;
-    });
+    let filteredQueue = currentQueue;
 
-    if (existingIndex !== -1) {
-      // Jika sudah ada, update payload-nya dengan yang terbaru agar tidak duplikasi antrean
-      currentQueue[existingIndex] = { action: actionType, payload, timestamp: Date.now() };
-    } else {
-      // Jika belum ada, masukkan baru
-      currentQueue.push({ action: actionType, payload, timestamp: Date.now() });
+    // Untuk aksi saveProduct atau editProduct, cegah duplikasi berdasarkan ID produk
+    if (actionType === 'saveProduct' || actionType === 'editProduct') {
+      filteredQueue = currentQueue.filter(item => {
+        const itemId = item.payload?.id;
+        return !( (item.action === 'saveProduct' || item.action === 'editProduct') && itemId === payloadId );
+      });
+    } 
+    // Untuk transaksi atau pengeluaran, pastikan ID yang sama tidak berbaris-baris
+    else if (actionType === 'sendTransaction' || actionType === 'saveExpense') {
+      filteredQueue = currentQueue.filter(item => {
+        const itemId = item.payload?.id;
+        return !( item.action === actionType && itemId === payloadId );
+      });
+    }
+    // Untuk shift
+    else if (actionType === 'openShift' || actionType === 'closeShift') {
+      filteredQueue = currentQueue.filter(item => {
+        const itemId = item.payload?.id_shift || item.payload?.idShift;
+        return !( (item.action === 'openShift' || item.action === 'closeShift') && itemId === payloadId );
+      });
     }
 
-    localStorage.setItem('tn_offline_queue', JSON.stringify(currentQueue));
+    filteredQueue.push({ action: actionType, payload, timestamp: Date.now() });
+    localStorage.setItem('tn_offline_queue', JSON.stringify(filteredQueue));
   };
 
   const isProcessingQueueRef = useRef(false);
@@ -352,7 +363,7 @@ export default function App() {
 
   const fetchShiftFromSheets = useCallback(async () => {
     try {
-      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbychXnOBXEZrdUaAYLcR1DDb22mbYqYjFEPedxGdVt4Fa07OXDowczgZ8m1G_k4cIHr/exec"; 
+      const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxlHJz6aHc_iSfTWslxM4ttpbJtY_CZg1zDNJV_DF9Po9pH105tybvFr3BsUJp3wuai/exec"; 
       const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=getShiftData`);
       const result = await response.json();
       
