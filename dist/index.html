@@ -7,19 +7,19 @@
 
     <!-- Meta Deskripsi & Favicon -->
     <meta name="description" content="Sistem Kasir (POS) Kedai Titik Nol" />
-    <link rel="icon" type="image/png" href="/aplikasi-kasir-v3/icon-192.png" />
+    <link rel="icon" type="image/png" href="./icon-192.png" />
 
     <!-- PWA Manifest & Warna Tema -->
-    <link rel="manifest" href="/aplikasi-kasir-v3/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#b45309" />
 
     <!-- Standar PWA Modern -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Kasir Titik Nol" />
-    <link rel="apple-touch-icon" href="/aplikasi-kasir-v3/icon-192.png" />
-    <script type="module" crossorigin src="/aplikasi-kasir-v3/assets/index-DIPBBcDH.js"></script>
-    <link rel="stylesheet" crossorigin href="/aplikasi-kasir-v3/assets/index-cCP1rGp1.css">
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <script type="module" crossorigin src="./assets/index-DIPBBcDH.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-cCP1rGp1.css">
   </head>
   <body>
     <div id="root"></div>
@@ -30,7 +30,7 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/aplikasi-kasir-v3/sw.js')
+          navigator.serviceWorker.register('./sw.js')
             .then((reg) => {
               console.log('SW berhasil terdaftar:', reg);
             })
