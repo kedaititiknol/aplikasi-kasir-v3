@@ -270,16 +270,24 @@ export default function App() {
   const queueOfflineAction = (actionType, payload) => {
     const currentQueue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
     
-    // Cek duplikasi khusus untuk transaksi atau shift agar tidak masuk antrean berulang
-    const isDuplicate = currentQueue.some(item => 
-      item.action === actionType && 
-      JSON.stringify(item.payload) === JSON.stringify(payload)
-    );
+    // Ambil ID unik dari payload (misal id transaksi, id shift, atau id expense)
+    const payloadId = payload?.id || payload?.id_shift || payload?.idShift;
 
-    if (!isDuplicate) {
+    // Cek apakah aksi dengan ID yang sama persis sudah ada di antrean
+    const existingIndex = currentQueue.findIndex(item => {
+      const itemId = item.payload?.id || item.payload?.id_shift || item.payload?.idShift;
+      return item.action === actionType && payloadId && itemId === payloadId;
+    });
+
+    if (existingIndex !== -1) {
+      // Jika sudah ada, update payload-nya dengan yang terbaru agar tidak duplikasi antrean
+      currentQueue[existingIndex] = { action: actionType, payload, timestamp: Date.now() };
+    } else {
+      // Jika belum ada, masukkan baru
       currentQueue.push({ action: actionType, payload, timestamp: Date.now() });
-      localStorage.setItem('tn_offline_queue', JSON.stringify(currentQueue));
     }
+
+    localStorage.setItem('tn_offline_queue', JSON.stringify(currentQueue));
   };
 
   const isProcessingQueueRef = useRef(false);
@@ -294,7 +302,7 @@ export default function App() {
       return;
     }
 
-    // Kosongkan antrean di localStorage detik itu juga agar tidak terbaca proses lain yang berjalan bersamaan
+    // Kosongkan antrean sementara untuk mencegah pembacaan paralel
     localStorage.setItem('tn_offline_queue', JSON.stringify([]));
 
     const remainingQueue = [];
@@ -302,13 +310,25 @@ export default function App() {
     for (const item of queue) {
       try {
         if (item.action === 'sendTransaction') {
-          await sendTransaction(item.payload);
+          // Cek apakah transaksi dengan ID ini sudah ada di state transactions online/lokal utama
+          const exists = transactions.some(t => t.id === item.payload.id);
+          if (!exists) {
+            await sendTransaction(item.payload);
+          }
         } else if (item.action === 'saveExpense') {
-          await saveExpenseToSheet(item.payload);
+          const exists = expenses.some(e => e.id === item.payload.id);
+          if (!exists) {
+            await saveExpenseToSheet(item.payload);
+          }
         } else if (item.action === 'saveProduct' || item.action === 'editProduct') {
           await saveProductToSheet(item.payload);
         } else if (item.action === 'openShift' || item.action === 'closeShift') {
-          await saveShiftToSheets(item.action, item.payload);
+          const shiftId = item.payload.id_shift || item.payload.idShift;
+          const exists = shiftHistory.some(s => (s.idShift || s.id_shift) === shiftId);
+          // Kirim hanya jika belum ada di riwayat shift server/lokal yang sudah tertutup
+          if (!exists || item.action === 'openShift') {
+            await saveShiftToSheets(item.action, item.payload);
+          }
         } else if (item.action === 'saveSettings') {
           await saveSettingsToSheet(item.payload);
         }
@@ -318,18 +338,17 @@ export default function App() {
       }
     }
 
-    // Kembalikan sisa antrean yang gagal jika ada
     if (remainingQueue.length > 0) {
       const currentQueue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
       localStorage.setItem('tn_offline_queue', JSON.stringify([...remainingQueue, ...currentQueue]));
     } else {
-      showToast('Antrean data & pengaturan berhasil disinkronkan ke Google Sheets!', 'success');
+      showToast('Antrean data berhasil disinkronkan tanpa duplikasi!', 'success');
       loadSheetData(false);
       fetchShiftFromSheets();
     }
 
     isProcessingQueueRef.current = false;
-  }, [showToast, loadSheetData, fetchShiftFromSheets]);
+  }, [transactions, expenses, shiftHistory, showToast, loadSheetData, fetchShiftFromSheets]);
 
   const fetchShiftFromSheets = useCallback(async () => {
     try {
