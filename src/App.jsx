@@ -61,6 +61,7 @@ const saveShiftToSheets = async (actionType, shiftData) => {
     console.log("Respons dari Google Sheets:", result);
   } catch (error) {
     console.error("Gagal sinkronisasi:", error);
+    throw error;
   }
 };
 
@@ -264,6 +265,8 @@ export default function App() {
   };
 
   const processOfflineQueue = useCallback(async () => {
+    if (!navigator.onLine) return;
+
     const queue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
     if (queue.length === 0) return;
 
@@ -276,6 +279,8 @@ export default function App() {
           await sendTransaction(item.payload);
         } else if (item.action === 'saveExpense') {
           await saveExpenseToSheet(item.payload);
+        } else if (item.action === 'saveProduct') {
+          await saveProductToSheet(item.payload);
         } else if (item.action === 'openShift' || item.action === 'closeShift') {
           await saveShiftToSheets(item.action, item.payload);
         }
@@ -286,7 +291,10 @@ export default function App() {
     }
 
     localStorage.setItem('tn_offline_queue', JSON.stringify(remainingQueue));
-  }, []);
+    if (remainingQueue.length < queue.length) {
+      showToast('Antrean data offline berhasil disinkronkan ke Google Sheets!', 'success');
+    }
+  }, [showToast]);
 
   const fetchShiftFromSheets = useCallback(async () => {
     try {
@@ -418,7 +426,17 @@ export default function App() {
   useEffect(() => {
     fetchShiftFromSheets();
     loadSheetData(true);
-    const interval = setInterval(() => loadSheetData(false), 20000);
+    
+    if (navigator.onLine) {
+      processOfflineQueue();
+    }
+
+    const interval = setInterval(() => {
+      if (navigator.onLine) {
+        processOfflineQueue();
+        loadSheetData(false);
+      }
+    }, 20000);
 
     const handleOnline = () => {
       showToast('Koneksi internet kembali aktif! Memproses antrean data...', 'info');
@@ -688,7 +706,7 @@ export default function App() {
     setReceiptModalOpen(true);
   };
 
-  const handleSaveProduct = (e) => {
+  const handleSaveProduct = async (e) => {
     e.preventDefault();
     const newProd = {
       id: editingProduct ? editingProduct.id : `PROD-${Date.now()}`,
@@ -707,9 +725,20 @@ export default function App() {
       return updated;
     });
 
-    saveProductToSheet(newProd);
+    try {
+      if (navigator.onLine) {
+        await saveProductToSheet(newProd);
+        showToast('Produk berhasil disimpan & disinkronkan!', 'success');
+      } else {
+        queueOfflineAction('saveProduct', newProd);
+        showToast('Offline: Produk disimpan lokal & akan disinkronkan saat online.', 'info');
+      }
+    } catch (err) {
+      queueOfflineAction('saveProduct', newProd);
+      showToast('Koneksi terganggu, produk masuk antrean sync.', 'info');
+    }
+
     setProductFormOpen(false);
-    showToast('Produk berhasil disimpan!', 'success');
   };
 
   const handleDeleteProduct = (id) => {
