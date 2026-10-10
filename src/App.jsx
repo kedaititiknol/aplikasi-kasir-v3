@@ -282,11 +282,20 @@ export default function App() {
     }
   };
 
+  const isProcessingQueueRef = useRef(false);
+
   const processOfflineQueue = useCallback(async () => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || isProcessingQueueRef.current) return;
+    isProcessingQueueRef.current = true;
 
     const queue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
-    if (queue.length === 0) return;
+    if (queue.length === 0) {
+      isProcessingQueueRef.current = false;
+      return;
+    }
+
+    // Kosongkan antrean di localStorage detik itu juga agar tidak terbaca proses lain yang berjalan bersamaan
+    localStorage.setItem('tn_offline_queue', JSON.stringify([]));
 
     const remainingQueue = [];
 
@@ -309,13 +318,17 @@ export default function App() {
       }
     }
 
-    localStorage.setItem('tn_offline_queue', JSON.stringify(remainingQueue));
-    if (remainingQueue.length < queue.length) {
+    // Kembalikan sisa antrean yang gagal jika ada
+    if (remainingQueue.length > 0) {
+      const currentQueue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
+      localStorage.setItem('tn_offline_queue', JSON.stringify([...remainingQueue, ...currentQueue]));
+    } else {
       showToast('Antrean data & pengaturan berhasil disinkronkan ke Google Sheets!', 'success');
-      // Tarik data terbaru setelah sinkronisasi selesai agar sinkron dengan server
       loadSheetData(false);
       fetchShiftFromSheets();
     }
+
+    isProcessingQueueRef.current = false;
   }, [showToast, loadSheetData, fetchShiftFromSheets]);
 
   const fetchShiftFromSheets = useCallback(async () => {
