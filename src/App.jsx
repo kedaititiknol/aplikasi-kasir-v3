@@ -385,7 +385,6 @@ export default function App() {
 
         // --- PENEMPATAN SCRIPT PENGATURAN (SETTINGS) ---
         if (data.settings) {
-          // Menyesuaikan dengan berbagai kemungkinan nama kolom dari Google Sheets
           const fetchedSettings = {
             storeName: data.settings.storeName || data.settings.namaToko || defaultSettings.storeName,
             address: data.settings.address || data.settings.alamat || defaultSettings.address,
@@ -397,6 +396,12 @@ export default function App() {
         }
         // ------------------------------------------------
 
+        // Ambil antrean offline untuk menggabungkan data lokal yang belum sempat terkirim
+        const offlineQueue = JSON.parse(localStorage.getItem('tn_offline_queue') || '[]');
+        const pendingExpenses = offlineQueue
+          .filter(q => q.action === 'saveExpense')
+          .map(q => q.payload);
+
         if (Array.isArray(data.expenses)) {
           const mappedExpenses = data.expenses.map((e, idx) => ({
             id: e?.id ? String(e.id) : `EXP-${idx + 1}`,
@@ -406,67 +411,52 @@ export default function App() {
             amount: Number(e?.nominal ?? e?.amount ?? 0)
           }));
 
-          setExpenses(prevLocalExpenses => {
-            const combinedMap = new Map();
-            mappedExpenses.forEach(e => combinedMap.set(e.id, e));
-            prevLocalExpenses.forEach(e => {
-              if (!combinedMap.has(e.id)) {
-                combinedMap.set(e.id, e);
-              }
-            });
-
-            const mergedList = Array.from(combinedMap.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
-            localStorage.setItem('tn_expenses', JSON.stringify(mergedList));
-            return mergedList;
-          });
+          // Server menjadi acuan utama (source of truth); gabungkan hanya dengan pengeluaran offline yang belum sync
+          const mergedExpenses = [...pendingExpenses, ...mappedExpenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+          setExpenses(mergedExpenses);
+          localStorage.setItem('tn_expenses', JSON.stringify(mergedExpenses));
         }
+
+        const pendingTransactions = offlineQueue
+          .filter(q => q.action === 'sendTransaction')
+          .map(q => q.payload);
 
         if (Array.isArray(data.transactions)) {
-  const mappedTransactions = data.transactions.map((t, idx) => {
-    let parsedItems = t?.items;
-    if (typeof parsedItems === 'string') {
-      try { parsedItems = JSON.parse(parsedItems); } catch (e) { parsedItems = []; }
-    }
-    if (Array.isArray(parsedItems)) {
-      parsedItems = parsedItems.map(item => {
-        let parsedItem = typeof item === 'string' ? JSON.parse(item) : item;
-        
-        // Jika costPrice dari server kosong/0, ambil dari data produk lokal berdasarkan ID/Nama
-        if (!parsedItem.costPrice || parsedItem.costPrice === 0) {
-          const matchedProd = products.find(p => p.id === parsedItem.productId || p.name === parsedItem.name);
-          parsedItem.costPrice = matchedProd ? matchedProd.costPrice : 0;
-        }
-        return parsedItem;
-      });
-    } else {
-      parsedItems = [];
-    }
+          const mappedTransactions = data.transactions.map((t, idx) => {
+            let parsedItems = t?.items;
+            if (typeof parsedItems === 'string') {
+              try { parsedItems = JSON.parse(parsedItems); } catch (e) { parsedItems = []; }
+            }
+            if (Array.isArray(parsedItems)) {
+              parsedItems = parsedItems.map(item => {
+                let parsedItem = typeof item === 'string' ? JSON.parse(item) : item;
+                
+                if (!parsedItem.costPrice || parsedItem.costPrice === 0) {
+                  const matchedProd = products.find(p => p.id === parsedItem.productId || p.name === parsedItem.name);
+                  parsedItem.costPrice = matchedProd ? matchedProd.costPrice : 0;
+                }
+                return parsedItem;
+              });
+            } else {
+              parsedItems = [];
+            }
 
-    return {
-      id: t?.id_transaksi || t?.id || `TRX-${idx + 1}`,
-      date: t?.tanggal || t?.date || new Date().toISOString(),
-      cashier: t?.kasir || t?.cashier || 'Kasir',
-      paymentMethod: t?.metode_bayar || t?.paymentMethod || 'Tunai',
-      total: Number(t?.total) || 0,
-      payment: Number(t?.bayar || t?.payment || t?.total) || 0,
-      change: Number(t?.kembali || t?.change) || 0,
-      items: parsedItems
-    };
-  });
-
-          setTransactions(prevLocalTrx => {
-            const combinedMap = new Map();
-            mappedTransactions.forEach(t => combinedMap.set(t.id, t));
-            prevLocalTrx.forEach(t => {
-              if (!combinedMap.has(t.id)) {
-                combinedMap.set(t.id, t);
-              }
-            });
-
-            const mergedList = Array.from(combinedMap.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
-            localStorage.setItem('tn_transactions', JSON.stringify(mergedList));
-            return mergedList;
+            return {
+              id: t?.id_transaksi || t?.id || `TRX-${idx + 1}`,
+              date: t?.tanggal || t?.date || new Date().toISOString(),
+              cashier: t?.kasir || t?.cashier || 'Kasir',
+              paymentMethod: t?.metode_bayar || t?.paymentMethod || 'Tunai',
+              total: Number(t?.total) || 0,
+              payment: Number(t?.bayar || t?.payment || t?.total) || 0,
+              change: Number(t?.kembali || t?.change) || 0,
+              items: parsedItems
+            };
           });
+
+          // Server menjadi acuan utama; gabungkan hanya dengan transaksi offline yang belum sync
+          const mergedTransactions = [...pendingTransactions, ...mappedTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+          setTransactions(mergedTransactions);
+          localStorage.setItem('tn_transactions', JSON.stringify(mergedTransactions));
         }
       }
     } catch (error) {
@@ -476,7 +466,7 @@ export default function App() {
       setIsSyncing(false);
       setLoading(false);
     }
-  }, []);
+  }, [products]);
 
   useEffect(() => {
     fetchShiftFromSheets();
@@ -697,25 +687,25 @@ export default function App() {
     }
 
     const change = paymentMethod === 'Tunai' ? payNum - cartTotal : 0;
-const newTrx = {
-  id: `TRX-${Date.now().toString().slice(-6)}`,
-  date: new Date().toISOString(),
-  items: cart.map(i => ({ 
-    productId: i.id, 
-    name: i.name, 
-    qty: i.qty, 
-    price: i.sellPrice, 
-    costPrice: i.costPrice || 0, // Pastikan harga modal terbawa
-    subtotal: i.sellPrice * i.qty,
-    notes: i.notes || '' 
-  })),
-  total: cartTotal,
-  payment: paymentMethod === 'Tunai' ? payNum : cartTotal,
-  change: change,
-  cashier: currentUser?.name || 'Kasir',
-  paymentMethod,
-  id_shift: currentShift?.id_shift || currentShift?.idShift || ''
-};
+    const newTrx = {
+      id: `TRX-${Date.now().toString().slice(-6)}`,
+      date: new Date().toISOString(),
+      items: cart.map(i => ({ 
+        productId: i.id, 
+        name: i.name, 
+        qty: i.qty, 
+        price: i.sellPrice, 
+        costPrice: i.costPrice || 0,
+        subtotal: i.sellPrice * i.qty,
+        notes: i.notes || '' 
+      })),
+      total: cartTotal,
+      payment: paymentMethod === 'Tunai' ? payNum : cartTotal,
+      change: change,
+      cashier: currentUser?.name || 'Kasir',
+      paymentMethod,
+      id_shift: currentShift?.id_shift || currentShift?.idShift || ''
+    };
 
     const updatedProducts = products.map(prod => {
       const cartItem = cart.find(c => c.id === prod.id);
@@ -762,46 +752,44 @@ const newTrx = {
   };
 
   const handleSaveProduct = async (e) => {
-  e.preventDefault();
-  const isEdit = !!editingProduct;
-  
-  const productData = {
-    id: isEdit ? editingProduct.id : `PROD-${Date.now()}`,
-    name: String(productFormData.name || 'Produk Tanpa Nama'),
-    categoryId: Number(productFormData.categoryId || 1),
-    stock: Number(productFormData.stock || 0),
-    costPrice: Number(productFormData.costPrice || 0),
-    sellPrice: Number(productFormData.sellPrice || 0),
-    actionType: isEdit ? 'editProduct' : 'saveProduct'
-  };
+    e.preventDefault();
+    const isEdit = !!editingProduct;
+    
+    const productData = {
+      id: isEdit ? editingProduct.id : `PROD-${Date.now()}`,
+      name: String(productFormData.name || 'Produk Tanpa Nama'),
+      categoryId: Number(productFormData.categoryId || 1),
+      stock: Number(productFormData.stock || 0),
+      costPrice: Number(productFormData.costPrice || 0),
+      sellPrice: Number(productFormData.sellPrice || 0),
+      actionType: isEdit ? 'editProduct' : 'saveProduct'
+    };
 
-  // 1. Update state dan localStorage lokal terlebih dahulu
-  setProducts(prev => {
-    const updated = isEdit 
-      ? prev.map(p => p.id === productData.id ? productData : p) 
-      : [...prev, productData];
-    localStorage.setItem('tn_products', JSON.stringify(updated));
-    return updated;
-  });
+    setProducts(prev => {
+      const updated = isEdit 
+        ? prev.map(p => p.id === productData.id ? productData : p) 
+        : [...prev, productData];
+      localStorage.setItem('tn_products', JSON.stringify(updated));
+      return updated;
+    });
 
-  // 2. Kirim ke Google Sheets atau masukkan ke antrean offline jika offline/gagal
-  try {
-    if (navigator.onLine) {
-      await saveProductToSheet(productData);
-      showToast(isEdit ? 'Produk berhasil diperbarui & disinkronkan!' : 'Produk berhasil disimpan & disinkronkan!', 'success');
-    } else {
+    try {
+      if (navigator.onLine) {
+        await saveProductToSheet(productData);
+        showToast(isEdit ? 'Produk berhasil diperbarui & disinkronkan!' : 'Produk berhasil disimpan & disinkronkan!', 'success');
+      } else {
+        queueOfflineAction(productData.actionType, productData);
+        showToast('Offline: Perubahan produk disimpan lokal & akan disinkronkan saat online.', 'info');
+      }
+    } catch (err) {
       queueOfflineAction(productData.actionType, productData);
-      showToast('Offline: Perubahan produk disimpan lokal & akan disinkronkan saat online.', 'info');
+      showToast('Koneksi terganggu, perubahan produk masuk antrean sync.', 'info');
     }
-  } catch (err) {
-    queueOfflineAction(productData.actionType, productData);
-    showToast('Koneksi terganggu, perubahan produk masuk antrean sync.', 'info');
-  }
 
-  setProductFormOpen(false);
-  setEditingProduct(null);
-  setProductFormData({ name: '', categoryId: 1, stock: 0, costPrice: 0, sellPrice: 0 });
-};
+    setProductFormOpen(false);
+    setEditingProduct(null);
+    setProductFormData({ name: '', categoryId: 1, stock: 0, costPrice: 0, sellPrice: 0 });
+  };
 
   const handleDeleteProduct = (id) => {
     if (window.confirm('Yakin ingin menghapus produk ini?')) {
@@ -812,45 +800,43 @@ const newTrx = {
   };
 
   const handleSaveExpense = async (e) => {
-  e.preventDefault();
-  const currentTime = new Date().toISOString();
-  const expDescription = String(expenseFormData.description || 'Pengeluaran');
-  const expAmount = Number(expenseFormData.amount || 0);
+    e.preventDefault();
+    const currentTime = new Date().toISOString();
+    const expDescription = String(expenseFormData.description || 'Pengeluaran');
+    const expAmount = Number(expenseFormData.amount || 0);
 
-  const newExp = {
-    id: `EXP-${Date.now()}`,
-    date: currentTime,
-    tanggal: currentTime,
-    kategori: expDescription,
-    description: expDescription,
-    amount: expAmount,
-    nominal: expAmount
-  };
+    const newExp = {
+      id: `EXP-${Date.now()}`,
+      date: currentTime,
+      tanggal: currentTime,
+      kategori: expDescription,
+      description: expDescription,
+      amount: expAmount,
+      nominal: expAmount
+    };
 
-  // 1. Simpan ke State & LocalStorage secara lokal
-  setExpenses(prev => {
-    const updated = [newExp, ...prev];
-    localStorage.setItem('tn_expenses', JSON.stringify(updated));
-    return updated;
-  });
+    setExpenses(prev => {
+      const updated = [newExp, ...prev];
+      localStorage.setItem('tn_expenses', JSON.stringify(updated));
+      return updated;
+    });
 
-  // 2. Kirim ke Google Sheets atau antrekan jika offline
-  try {
-    if (navigator.onLine) {
-      await saveExpenseToSheet(newExp);
-      showToast('Pengeluaran berhasil dicatat & disinkronkan!', 'success');
-    } else {
+    try {
+      if (navigator.onLine) {
+        await saveExpenseToSheet(newExp);
+        showToast('Pengeluaran berhasil dicatat & disinkronkan!', 'success');
+      } else {
+        queueOfflineAction('saveExpense', newExp);
+        showToast('Offline: Pengeluaran dicatat lokal & akan dikirim saat online.', 'info');
+      }
+    } catch (err) {
       queueOfflineAction('saveExpense', newExp);
-      showToast('Offline: Pengeluaran dicatat lokal & akan dikirim saat online.', 'info');
+      showToast('Koneksi terganggu, pengeluaran masuk antrean sinkronisasi.', 'info');
     }
-  } catch (err) {
-    queueOfflineAction('saveExpense', newExp);
-    showToast('Koneksi terganggu, pengeluaran masuk antrean sinkronisasi.', 'info');
-  }
 
-  setExpenseFormOpen(false);
-  setExpenseFormData({ description: '', amount: '' });
-};
+    setExpenseFormOpen(false);
+    setExpenseFormData({ description: '', amount: '' });
+  };
 
   const exportReportToExcel = () => {
     if (filteredReportTransactions.length === 0) {
@@ -922,44 +908,41 @@ const newTrx = {
   const totalExpenses = useMemo(() => expenses.reduce((s, e) => s + (e.amount || 0), 0), [expenses]);
   const netProfit = grossProfit - totalExpenses;
 
-  // Pastikan format tanggal konsisten (YYYY-MM-DD)
-const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = new Date().toISOString().slice(0, 10);
 
-// Memfilter transaksi hari ini berdasarkan tanggal lokal atau string ISO
-const todayTransactions = useMemo(() => {
-  return transactions.filter(t => {
-    if (!t.date) return false;
-    // Mengambil 10 karakter pertama dari string tanggal (YYYY-MM-DD)
-    const trxDate = String(t.date).slice(0, 10);
-    return trxDate === todayStr;
-  });
-}, [transactions, todayStr]);
+  const todayTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      if (!t.date) return false;
+      const trxDate = String(t.date).slice(0, 10);
+      return trxDate === todayStr;
+    });
+  }, [transactions, todayStr]);
 
-const todayRevenue = useMemo(() => {
-  return todayTransactions.reduce((s, t) => s + (Number(t.total) || 0), 0);
-}, [todayTransactions]);
+  const todayRevenue = useMemo(() => {
+    return todayTransactions.reduce((s, t) => s + (Number(t.total) || 0), 0);
+  }, [todayTransactions]);
+
   const lowStockProducts = useMemo(() => products.filter(p => p.stock < 10), [products]);
 
-const chartData = useMemo(() => {
-  const days = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
-    const label = d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' });
-    
-    // Menghitung total transaksi berdasarkan state transactions (mencakup online & offline lokal)
-    const dayTotal = transactions
-      .filter(t => {
-        if (!t.date) return false;
-        return String(t.date).slice(0, 10) === dateStr;
-      })
-      .reduce((sum, t) => sum + (Number(t.total) || 0), 0);
+  const chartData = useMemo(() => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const label = d.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric' });
       
-    days.push({ label, total: dayTotal });
-  }
-  return days;
-}, [transactions]);
+      const dayTotal = transactions
+        .filter(t => {
+          if (!t.date) return false;
+          return String(t.date).slice(0, 10) === dateStr;
+        })
+        .reduce((sum, t) => sum + (Number(t.total) || 0), 0);
+        
+      days.push({ label, total: dayTotal });
+    }
+    return days;
+  }, [transactions]);
 
   const maxChartValue = Math.max(...chartData.map(d => d.total), 100000);
 
@@ -1993,11 +1976,9 @@ const chartData = useMemo(() => {
   <Pengaturan 
     settings={settings} 
     onSaveSettings={async (newSettings) => {
-      // 1. Simpan lokal secara instan
       setSettings(newSettings);
       localStorage.setItem('pos_settings', JSON.stringify(newSettings));
 
-      // 2. Kirim ke Google Sheets atau masukkan antrean offline
       try {
         if (navigator.onLine) {
           await saveSettingsToSheet(newSettings);
